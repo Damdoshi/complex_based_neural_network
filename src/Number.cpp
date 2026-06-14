@@ -77,52 +77,6 @@ std::complex<float> Round<std::complex<float>>(std::complex<float> const &v)
 }
 
 template<>
-std::complex<double>	Reverse(std::complex<double> const &v, std::complex<double> const &r, int max)
-{
-  double		rl = v.real();
-  double		im = v.imag();
-
-  if (r.real() > 0)
-    {
-      if (rl > 0)
-	rl = max - rl;
-      else
-	rl = -max + rl;
-    }
-  if (r.imag() > 0)
-    {
-      if (im > 0)
-	im = max - im;
-      else
-	im = -max + im;
-    }
-  return (std::complex<double>(rl, im));
-}
-
-template<>
-std::complex<float>	Reverse(std::complex<float> const &v, std::complex<float> const &r, int max)
-{
-  float			rl = v.real();
-  float			im = v.imag();
-
-  if (r.real() > 0)
-    {
-      if (rl > 0)
-	rl = max - rl;
-      else
-	rl = -max + rl;
-    }
-  if (r.imag() > 0)
-    {
-      if (im > 0)
-	im = max - im;
-      else
-	im = -max + im;
-    }
-  return (std::complex<float>(rl, im));
-}
-
-template<>
 std::string		Format<std::complex<double>>(std::complex<double> const &v)
 {
   char			buffer[256];

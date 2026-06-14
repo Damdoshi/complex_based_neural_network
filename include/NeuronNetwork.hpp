@@ -3,6 +3,7 @@
 # define		NEURON_NETWORK_HPP
 # include		"NeuronLayer.hpp"
 # include		"IdGenerator.hpp"
+# include		<stdexcept>
 
 template <typename	MathValue = std::complex<double>, int MaxAbsValue = 50>
 class			NeuronNetwork
@@ -68,6 +69,7 @@ public:
       throw std::exception();
     return (nl.Get(neuron));
   }
+
   void			Reset(void)
   {
     for (size_t i = 0; i < layers.size(); ++i)
@@ -76,7 +78,16 @@ public:
 
   void			Mutate(void)
   {
-    layers[rand() % layers.size()].Mutate();
+    if (layers.size() <= 1)
+      throw std::exception();
+    layers[rand() % (layers.size() - 1) + 1].Mutate();
+  }
+
+  void			BackpropInitialize(void)
+  {
+    for (size_t l = 1; l < layers.size(); ++l)
+      for (size_t i = 0; i < layers[l].neurons.size(); ++i)
+	layers[l].neurons[i].BackpropInitialize();
   }
 
   void			Combine(NeuronNetwork<MathValue, MaxAbsValue> const &a,
@@ -88,6 +99,77 @@ public:
 
     for (i = 0; i < a.layers.size(); ++i)
       layers[i].Combine(a.layers[i], b.layers[i]);
+  }
+
+  double		Backpropagate(std::vector<MathValue> const &input,
+			      std::vector<MathValue> const &target,
+			      double learning_rate)
+  {
+    if (layers.size() < 2)
+      throw std::exception();
+    if (layers[0].neurons.size() != input.size())
+      throw std::exception();
+    if (layers.rbegin()->neurons.size() != target.size())
+      throw std::exception();
+    Reset();
+    for (size_t i = 0; i < input.size(); ++i)
+      layers[0].neurons[i].Set(input[i]);
+
+    NeuronLayer<MathValue, MaxAbsValue> &out = layers[layers.size() - 1];
+    double error = 0;
+
+    for (size_t i = 0; i < out.neurons.size(); ++i)
+      {
+	MathValue output = out.neurons[i].Compute();
+	MathValue diff = output - target[i];
+
+	error += SquaredMagnitude(diff);
+	out.neurons[i].SetOutputDelta(target[i]);
+      }
+
+    for (int l = (int)layers.size() - 2; l > 0; --l)
+      {
+	NeuronLayer<MathValue, MaxAbsValue> &current = layers[l];
+	NeuronLayer<MathValue, MaxAbsValue> &next = layers[l + 1];
+
+	for (size_t i = 0; i < current.neurons.size(); ++i)
+	  {
+	    MathValue sum = Zero<MathValue>();
+
+	    for (size_t j = 0; j < next.neurons.size(); ++j)
+	      for (size_t k = 0; k < next.neurons[j].inputs.size(); ++k)
+		if (next.neurons[j].inputs[k].neuron == &current.neurons[i])
+		  sum += NeuralMultiply(next.neurons[j].inputs[k].coefficient, next.neurons[j].delta_value);
+	    current.neurons[i].SetHiddenDelta(sum);
+	  }
+      }
+
+    for (size_t l = 1; l < layers.size(); ++l)
+      for (size_t i = 0; i < layers[l].neurons.size(); ++i)
+	layers[l].neurons[i].ApplyBackprop(learning_rate);
+    return (error / target.size());
+  }
+
+  double		Backpropagate(std::vector<std::pair<std::vector<MathValue>,
+							std::vector<MathValue>>> const &samples,
+			      size_t epochs,
+			      double learning_rate,
+			      double target_error = 0.0)
+  {
+    double error = 0;
+
+    if (samples.empty())
+      throw std::exception();
+    for (size_t epoch = 0; epoch < epochs; ++epoch)
+      {
+	error = 0;
+	for (size_t i = 0; i < samples.size(); ++i)
+	  error += Backpropagate(samples[i].first, samples[i].second, learning_rate);
+	error /= samples.size();
+	if (target_error > 0.0 && error <= target_error)
+	  break ;
+      }
+    return (error);
   }
 
   void			Save(t_bunny_configuration			*cnf,

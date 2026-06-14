@@ -2,6 +2,9 @@
 #include		"Xor.hpp"
 #include		"Morpion.hpp"
 #include		"Empty.hpp"
+#include		<cstdlib>
+#include		<cstring>
+#include		<ctime>
 
 int			main(int		argc,
 			     char		**argv)
@@ -16,6 +19,7 @@ int			main(int		argc,
     {
       puts("./bin\n"
 	   "\txor [file]?\n"
+	   "\txor-bp [--load file] [epochs=10000] [learning_rate=1.0] [output=xor_bp.csv]?\n"
 	   "\toxo [file]?\n"
 	   "\n"
 	   );
@@ -55,6 +59,43 @@ int			main(int		argc,
       std::cerr << xorgate(0, 1) << std::endl;
       std::cerr << xorgate(1, 0) << std::endl;
       std::cerr << xorgate(1, 1) << std::endl;
+    }
+
+  if (!strcmp(argv[1], "xor-bp"))
+    {
+      Xor		*xorg;
+      size_t		epochs = 10000;
+      double		learning_rate = 1.0;
+      std::string	output_file = "xor_bp.csv";
+      bool		initialize = true;
+
+      int argi = 2;
+
+      if (argc >= 4 && !strcmp(argv[2], "--load"))
+	{
+	  xorg = new Xor(std::string(argv[3]));
+	  initialize = false;
+	  argi = 4;
+	}
+      else
+	xorg = new Xor({2, 8, 1}, 16);
+      if (argc > argi)
+	epochs = strtoul(argv[argi], NULL, 10);
+      if (argc > argi + 1)
+	learning_rate = atof(argv[argi + 1]);
+      if (argc > argi + 2)
+	output_file = argv[argi + 2];
+
+      double error = xorg->Backpropagate(epochs, learning_rate, 0.001, initialize);
+
+      std::cerr << "Final mean squared error is " << error << "." << std::endl;
+      std::cerr << "[X, NX]" << std::endl;
+      std::cerr << xorg->BackpropResult(0, 0) << std::endl;
+      std::cerr << xorg->BackpropResult(0, 1) << std::endl;
+      std::cerr << xorg->BackpropResult(1, 0) << std::endl;
+      std::cerr << xorg->BackpropResult(1, 1) << std::endl;
+      xorg->SaveBest(output_file);
+      delete xorg;
     }
 
   if (!strcmp(argv[1], "oxo"))

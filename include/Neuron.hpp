@@ -29,28 +29,34 @@ class			Neuron
   std::vector<Input>	inputs;
   MathValue		inner_value;
   MathValue		output_value;
+  MathValue		delta_value;
 
   bool			ready;
-  MathValue		reverse_output;
-  MathValue		toggle_value;
+  // Biais du neurone : valeur ajoutée à la somme pondérée avant
+  // l'activation. Dans l'ancien modèle, toggle_value était un seuil
+  // testé avec "sum > threshold". Le biais exprime la même idée sous
+  // une forme plus pratique pour la rétropropagation :
+  //   activation(sum - threshold) == activation(sum + bias)
+  // donc bias == -threshold. Un biais positif rend le neurone plus
+  // facile à activer, un biais négatif le rend plus difficile à activer.
+  MathValue		bias;
 
   void			AllRandom(void)
   {
-    reverse_output = Random<MathValue>(1);
     for (size_t i = 0; i < inputs.size(); ++i)
       inputs[i].coefficient = Random<MathValue>(MaxAbsValue);
-    toggle_value = Random<MathValue>(MaxAbsValue * inputs.size());
+    bias = Random<MathValue>(MaxAbsValue * inputs.size());
     inner_value =  Random<MathValue>(MaxAbsValue * inputs.size());
-    output_value = Round(inner_value);
+    output_value = Activation<MathValue>(inner_value);
+    delta_value = Zero<MathValue>();
   }
-  
+
 public:
   uint64_t		Hash(void) const
   {
     uint64_t		hash = 5381;
 
-    hash = ((hash << 5) + hash) + ::Hash(reverse_output);
-    hash = ((hash << 5) + hash) + ::Hash(inner_value);
+    hash = ((hash << 5) + hash) + ::Hash(bias);
     for (size_t i = 0; i < inputs.size(); ++i)
       hash = ((hash << 5) + hash) + ::Hash(inputs[i].coefficient);
     return (hash);
@@ -61,14 +67,12 @@ public:
       throw std::exception();
     os << "\033[35m";
     os << "  Neuron : ";
-    os << "\033[31m";
-    os << "   Rev " << Format(reverse_output) << " ";
     os << "\033[32m";
-    os << "   Tog " << Format(toggle_value) << " ";
+    os << "   Bias " << Format(bias) << " ";
     os << "\033[33m";
     os << "   Out " << Format(output_value) << " ";
     os << "\033[36m";
-    os << "   Inn " << Format(output_value) << " ";
+    os << "   Inn " << Format(inner_value) << " ";
     os << "\033[34m";
     for (size_t i = 0; i < inputs.size(); ++i)
       {
@@ -82,35 +86,37 @@ public:
 
   void			Mutate(void)
   {
-    int			rnd = rand() % (inputs.size() + 2);
+    int			rnd = rand() % (inputs.size() + 1);
 
     if (rnd == 0)
       {
-	reverse_output = Random<MathValue>(1);
+	bias = Random<MathValue>(MaxAbsValue * inputs.size());
 	return ;
       }
-    if (rnd == 1)
-      {
-	toggle_value = Random<MathValue>(MaxAbsValue * inputs.size());
-	return ;
-      }
-    inputs[rnd - 2].coefficient = Random<MathValue>(MaxAbsValue);
+    inputs[rnd - 1].coefficient = Random<MathValue>(MaxAbsValue);
   }
-  
+
+  void			BackpropInitialize(void)
+  {
+    if (inputs.size() == 0)
+      return ;
+    double scale = 1.0 / sqrt((double)inputs.size());
+
+    bias = Scale(Random<MathValue>(1), scale);
+    for (size_t i = 0; i < inputs.size(); ++i)
+      inputs[i].coefficient = Scale(Random<MathValue>(1), scale);
+  }
+
   MathValue		Compute(void)
   {
     if (ready)
       return (output_value);
-    inner_value = Zero<MathValue>();
+    if (inputs.size() == 0)
+      return (output_value);
+    inner_value = bias;
     for (size_t i = 0; i < inputs.size(); ++i)
-      inner_value += inputs[i].coefficient * inputs[i].neuron->Compute();
-
-    // Si c'est une entrée
-    if (toggle_value == Zero<MathValue>())
-      return (inner_value);
-    // Sinon c'est un intermédiaire
-    output_value = ::Round(inner_value / toggle_value);
-    output_value = ::Reverse(output_value, reverse_output, MaxAbsValue);
+      inner_value += NeuralMultiply(inputs[i].coefficient, inputs[i].neuron->Compute());
+    output_value = Activation<MathValue>(inner_value);
     ready = true;
     return (output_value);
   }
@@ -118,6 +124,25 @@ public:
   {
     ready = true;
     return (output_value = inner_value = val);
+  }
+
+  void			SetOutputDelta(MathValue const &target)
+  {
+    delta_value = NeuralMultiply(output_value - target, ActivationDerivativeFromOutput(output_value));
+  }
+
+  void			SetHiddenDelta(MathValue const &backward_sum)
+  {
+    delta_value = NeuralMultiply(backward_sum, ActivationDerivativeFromOutput(output_value));
+  }
+
+  void			ApplyBackprop(double learning_rate)
+  {
+    if (inputs.size() == 0)
+      return ;
+    for (size_t i = 0; i < inputs.size(); ++i)
+      inputs[i].coefficient -= Scale(NeuralMultiply(delta_value, inputs[i].neuron->output_value), learning_rate);
+    bias -= Scale(delta_value, learning_rate);
   }
   void			Reset(void)
   {
@@ -133,19 +158,17 @@ public:
     if (inputs.size() == 0)
       return ;
     size_t		i;
-    
-    reverse_output = ::Combine<MathValue>(a.reverse_output, b.reverse_output);
-    toggle_value = ::Combine<MathValue>(a.toggle_value, b.toggle_value);
+
+    bias = ::Combine<MathValue>(a.bias, b.bias);
     for (i = 0; i < inputs.size(); ++i)
       inputs[i].coefficient = ::Combine<MathValue>(a.inputs[i].coefficient, b.inputs[i].coefficient);
   }
-  
+
   int			Load(t_bunny_configuration	*cnf,
 			     int			line,
 			     int			col)
   {
-    col += Retrieve<MathValue>(cnf, line, col, reverse_output);
-    col += Retrieve<MathValue>(cnf, line, col, toggle_value);
+    col += Retrieve<MathValue>(cnf, line, col, bias);
     for (size_t i = 0; i < inputs.size(); ++i)
       col += Retrieve<MathValue>(cnf, line, col, inputs[i].coefficient);
     return (col);
@@ -155,13 +178,12 @@ public:
 			     int			line,
 			     int			col) const
   {
-    col += Export<MathValue>(cnf, line, col, reverse_output);
-    col += Export<MathValue>(cnf, line, col, toggle_value);
+    col += Export<MathValue>(cnf, line, col, bias);
     for (size_t i = 0; i < inputs.size(); ++i)
       col += Export<MathValue>(cnf, line, col, inputs[i].coefficient);
     return (col);
   }
-  
+
   Neuron(size_t		ninputs = 0)
     : ready(false)
   {

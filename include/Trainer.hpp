@@ -4,6 +4,7 @@
 # include			<algorithm>
 # include			<iostream>
 # include			<map>
+# include			<float.h>
 # include			"NeuronNetwork.hpp"
 
 template <typename		MathValue = std::complex<double>, int MaxAbsValue = 50>
@@ -70,6 +71,33 @@ public:
       nnp[i].first = Test(*nnp[i].second);
     std::sort(nnp.begin(), nnp.end(), SortByScore);
     best = nnp.rbegin()->first;
+    return (best);
+  }
+
+  double				Backpropagate(
+    std::vector<std::pair<std::vector<MathValue>,
+				  std::vector<MathValue>>> const &samples,
+    size_t				epochs,
+    double				learning_rate,
+    double				target_error = 0.0,
+    bool				initialize = true)
+  {
+    double			best;
+
+    if (nnp.empty())
+      throw std::exception();
+    best = DBL_MAX;
+    for (size_t i = 0; i < nnp.size(); ++i)
+      {
+	if (initialize)
+	  nnp[i].second->BackpropInitialize();
+	double error = nnp[i].second->Backpropagate(samples, epochs, learning_rate, target_error);
+
+	nnp[i].first = -error;
+	if (error < best)
+	  best = error;
+      }
+    std::sort(nnp.begin(), nnp.end(), SortByScore);
     return (best);
   }
 
